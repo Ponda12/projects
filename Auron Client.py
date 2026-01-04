@@ -1,39 +1,49 @@
 import flet as ft
-from tkinter.filedialog import askopenfilename
-import os, json, pyperclip, time, psutil, datetime, pyautogui
-import win32api, win32gui, win32con, win32process
 import ctypes
-from ctypes import wintypes, WinDLL, windll
-import uuid, platform, subprocess, hashlib, base64, requests
 import mss, struct, threading
+import win32api, win32gui, win32con, win32process
+import os, sys, json, pyperclip, time, psutil, datetime, pyautogui
+import uuid, platform, subprocess, hashlib, base64, requests
+
+from ctypes import wintypes, WinDLL, windll
+from datetime import datetime
+
+
+
+def resource_path(name):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, name)
+    return os.path.join(os.path.dirname(__file__), name)
+
 
 
 # variables
 running = False
-pid = None
-h_proc = None
-address = None
-window = None
+upd_running = False
 value = None
 chat_id = None
+h_process = None
+
 
 # links
-pastebin_link = "https://pastebin.com/raw/6ZkW9GgH"
+db_link = "https://pastebin.com/raw/6ZkW9GgH"
 bot_token = "8537133653:AAGkmkp07fl2tIJlmrZstINj7hfNP0l0JRs"
 
 # coordinates
 buy = (1636, 446)
 confirm = (951, 693)
 upd = (717, 367)
-upd_nakl = (1009,367)
+upd_nakl = (1000, 363)
 skin = (1033, 463)
-cancel = (1818,99)
+cancel = (1818, 99)
 size = (1920, 1080)
-
 
 # ctypes + oop
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-ntdll = ctypes.WinDLL('ntdll')
+dll = ctypes.WinDLL(resource_path("external.dll"))
+dll_read = dll.Read
+dll_read.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+dll_read.restype = ctypes.c_long
 
 PROCESS_ALL_ACCESS = 0x1F0FFF
 MEM_COMMIT = 0x1000
@@ -47,9 +57,13 @@ PAGE_EXECUTE_WRITECOPY = 0x80
 OpenProcess = kernel32.OpenProcess
 VirtualQueryEx = kernel32.VirtualQueryEx
 ReadProcessMemory = kernel32.ReadProcessMemory
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+kernel32.OpenProcess.restype = wintypes.HANDLE
+
 
 class RECT(ctypes.Structure):
     _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long), ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
+
 
 class SECURITY_ATTRIBUTES(ctypes.Structure):
     _fields_ = [
@@ -57,6 +71,7 @@ class SECURITY_ATTRIBUTES(ctypes.Structure):
         ("lpSecurityDescriptor", wintypes.LPVOID),
         ("bInheritHandle", wintypes.BOOL)
     ]
+
 
 class MEMORY_BASIC_INFORMATION(ctypes.Structure):
     _fields_ = [
@@ -69,131 +84,8 @@ class MEMORY_BASIC_INFORMATION(ctypes.Structure):
         ("Type", wintypes.DWORD),
     ]
 
+
 # Functions
-def load_cfg(e, page):
-    global address, chat_id
-
-    config_file = askopenfilename(title="Выберите нужный файл (.json)", filetypes=[('json file', '*.json'), ('all files', '*.*')])
-
-    with open(config_file, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    address = int(config["address"], 16)
-    chat_id = config["chat_id"]
-
-    PRIMARY_COLOR = ft.Colors.CYAN_400
-    SECONDARY_COLOR = ft.Colors.GREY_400
-    CARD_COLOR = ft.Colors.GREY_900
-    TEXT_COLOR = ft.Colors.WHITE
-
-    close_button = ft.Container(
-        content=ft.Text("Закрыть", color=TEXT_COLOR, weight=ft.FontWeight.BOLD),
-        width=170,
-        height=48,
-        border_radius=14,
-        alignment=ft.alignment.center,
-
-
-        bgcolor=PRIMARY_COLOR,
-
-        on_click=lambda e: close_dialog(dialog, page),
-
-        shadow=ft.BoxShadow(
-            blur_radius=18,
-            spread_radius=1,
-            color=ft.Colors.with_opacity(0.4, PRIMARY_COLOR),
-            offset=ft.Offset(0, 0),
-        ),
-    )
-
-    dialog_card = ft.Container(
-        content=ft.Column(
-            [
-                # Заголовок
-                ft.Row(
-                    [
-                        ft.Container(
-                            content=ft.Icon(ft.Icons.CHECK_CIRCLE, size=38, color=PRIMARY_COLOR),
-                            padding=ft.padding.all(10),
-                            border_radius=50,
-                            bgcolor=ft.Colors.with_opacity(0.15, PRIMARY_COLOR),
-                        ),
-                        ft.Text(
-                            "Конфиг успешно загружен",
-                            size=16,
-                            weight=ft.FontWeight.BOLD,
-                            color=TEXT_COLOR,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=10,
-                ),
-
-
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Text(f"Адрес: {config['address']}", color=ft.Colors.GREY_300, size=14),
-                            ft.Text(
-                                "Проверьте данные перед запуском.",
-                                color=ft.Colors.GREY_500,
-                                size=12,
-                                italic=True
-                            ),
-                        ],
-                        spacing=6,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.all(10),
-                ),
-            ],
-            spacing=12,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-
-        padding=25,
-        border_radius=20,
-
-
-        bgcolor=ft.LinearGradient(
-            begin=ft.Alignment(-1, -1),
-            end=ft.Alignment(1, 1),
-            colors=[
-                ft.Colors.with_opacity(0.18, ft.Colors.BLACK),
-                ft.Colors.with_opacity(0.10, ft.Colors.GREY_900),
-            ],
-        ),
-
-
-        shadow=ft.BoxShadow(
-            blur_radius=32,
-            spread_radius=2,
-            color=ft.Colors.with_opacity(0.45, ft.Colors.BLACK),
-            offset=ft.Offset(0, 6),
-        ),
-    )
-
-    dialog = ft.AlertDialog(
-        modal=True,
-        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLACK),
-
-
-        content=ft.Container(
-            content=ft.Column(
-                [dialog_card],
-                alignment=ft.MainAxisAlignment.CENTER,
-
-            ),
-            width=380,
-        ),
-        actions=[close_button],
-        inset_padding=ft.padding.all(25),
-    )
-
-    page.overlay.append(dialog)
-    dialog.open = True
-    page.update()
-
-
 def auto_pid():
     target_processes = ['Ld9BoxHeadless.exe', 'HD-Player.exe']
     latest_process = None
@@ -231,15 +123,13 @@ def auto_hwnd(pid, process_name):
         target_process = 'HD-Player.exe'
 
     target_pid = None
-    for proc in psutil.process_iter(['pid', 'name']):
+    for proc in psutil.process_iter(['pid', 'name', 'create_time']):
         if proc.info['name'] == target_process:
             target_pid = proc.info['pid']
             break
 
     if not target_pid:
         return None
-
-
 
     hwnds = []
     win32gui.EnumWindows(callback, hwnds)
@@ -262,11 +152,13 @@ def auto_hwnd(pid, process_name):
 
     return hwnd
 
+
 def window_rect(hwnd):
     rect = RECT()
     user32 = ctypes.windll.user32
     user32.GetWindowRect(hwnd, ctypes.byref(rect))
     return rect
+
 
 def cords(rect, x, y, original_size):
     window_width = rect.right - rect.left
@@ -277,30 +169,67 @@ def cords(rect, x, y, original_size):
     proportional_y = int(normalized_y * window_height)
     return proportional_x, proportional_y
 
+
 def click(hwnd, x, y) -> None:
     lParam = win32api.MAKELONG(x, y)
-    win32api.PostMessage(hwnd, 513, 0, lParam)
-    win32api.PostMessage(hwnd,514, 0, lParam)
+    win32api.SendMessage(hwnd, 513, 0, lParam)
+    win32api.SendMessage(hwnd, 514, 0, lParam)
+
 
 def read(h_process, address):
-    buf = ctypes.create_string_buffer(2)
+    buf = ctypes.create_string_buffer(1)
     bytes_read = ctypes.c_size_t()
-    ok = ReadProcessMemory(h_process, ctypes.c_void_p(address), buf, 2, ctypes.byref(bytes_read))
-    if not ok or bytes_read.value != 2:
+    ok = ReadProcessMemory(h_process, ctypes.c_void_p(address), buf, 1, ctypes.byref(bytes_read))
+    if not ok or bytes_read.value != 1:
         return None
-    return struct.unpack("<H", buf.raw)[0]
+    return struct.unpack("<B", buf.raw)[0]
+
+
+def create_cheat_table(addresses, process_name, filename=None):
+    if not addresses:
+        return None
+
+    if filename is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"bug_pd_{process_name}_{timestamp}.ct"
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+        f.write('<CheatTable CheatEngineTableVersion="42">\n')
+        f.write('  <CheatEntries>\n')
+
+        for i, addr in enumerate(addresses):
+            f.write('    <CheatEntry>\n')
+            f.write(f'      <ID>{i + 1}</ID>\n')
+            f.write(f'      <Description>"Баг ПД"</Description>\n')
+            f.write(f'      <VariableType>Byte</VariableType>\n')
+            f.write(f'      <Address>{addr:X}</Address>\n')
+            f.write('    </CheatEntry>\n')
+
+        f.write('  </CheatEntries>\n')
+        f.write('  <UserdefinedSymbols/>\n')
+        f.write(f'  <Comments>Баг ПД адреса для {process_name}</Comments>\n')
+        f.write(f'  <LuaScript>-- Сгенерировано {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'print("Загружена таблица с {len(addresses)} адресами")\n')
+        f.write('</LuaScript>\n')
+        f.write('</CheatTable>')
+    return filename
 
 def scan_for_value2(h_process, target_value):
     found = []
-    CHUNK = 4 * 1024 * 1024
+    CHUNK = 64 * 1024 * 1024
 
-
-    pattern = struct.pack("<H", target_value)
+    pattern = struct.pack("<B", target_value)
 
     addr = 0
     mbi = MEMORY_BASIC_INFORMATION()
 
-    while VirtualQueryEx(h_process, ctypes.c_void_p(addr), ctypes.byref(mbi), ctypes.sizeof(mbi)) == ctypes.sizeof(mbi):
+    while True:
+        res = VirtualQueryEx(h_process, ctypes.c_void_p(addr),
+                             ctypes.byref(mbi), ctypes.sizeof(mbi))
+        if res == 0:
+            break
+
         if mbi.State == MEM_COMMIT:
             prot = mbi.Protect
             readable = (prot & PAGE_READONLY) or (prot & PAGE_READWRITE) or (prot & PAGE_WRITECOPY) or \
@@ -313,16 +242,21 @@ def scan_for_value2(h_process, target_value):
 
                 while offset < region_size:
                     to_read = min(CHUNK, region_size - offset)
-                    if to_read < 2:
+                    if to_read < 1:
                         break
 
                     buf = ctypes.create_string_buffer(to_read)
                     bytes_read = ctypes.c_size_t()
 
-                    ok = ReadProcessMemory(h_process, ctypes.c_void_p(base + offset),
-                                           buf, to_read, ctypes.byref(bytes_read))
+                    ok = ReadProcessMemory(
+                        h_process,
+                        ctypes.c_void_p(base + offset),
+                        buf,
+                        to_read,
+                        ctypes.byref(bytes_read)
+                    )
 
-                    if ok and bytes_read.value >= 2:
+                    if ok and bytes_read.value >= 1:
                         raw = buf.raw[:bytes_read.value]
 
                         start = 0
@@ -330,20 +264,21 @@ def scan_for_value2(h_process, target_value):
                             idx = raw.find(pattern, start)
                             if idx == -1:
                                 break
-                            if (base + offset + idx) % 2 == 0:
-                                found.append(base + offset + idx)
-                            start = idx + 2
+
+                            addr_found = base + offset + idx
+                            found.append(addr_found)
+
+                            start = idx + 1
 
                     offset += to_read
 
         addr = mbi.BaseAddress + mbi.RegionSize
         if addr >= 0x7FFFFFFFFFFF:
             break
-
     return found
 
 
-def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, pause=0.5):
+def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, process_name, pause=0.5):
     addresses = list(initial_addresses)
 
     click(hwnd, *up_coord)
@@ -353,11 +288,11 @@ def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, pause=0.5):
 
     click(hwnd, *buy_coord)
     time.sleep(pause)
-    addresses = [addr for addr in addresses if read(h_process, addr) == 257]
+    addresses = [addr for addr in addresses if read(h_process, addr) == 1]
 
     click(hwnd, *buy_coord)
     time.sleep(pause)
-    addresses = [addr for addr in addresses if read(h_process, addr) == 1]
+    addresses = [addr for addr in addresses if read(h_process, addr) == 0]
 
     click(hwnd, *up_coord)
     time.sleep(pause)
@@ -366,7 +301,11 @@ def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, pause=0.5):
 
     click(hwnd, *buy_coord)
     time.sleep(pause)
-    addresses = [addr for addr in addresses if read(h_process, addr) == 257]
+    addresses = [addr for addr in addresses if read(h_process, addr) == 1]
+
+    click(hwnd, *buy_coord)
+    time.sleep(pause)
+    addresses = [addr for addr in addresses if read(h_process, addr) == 0]
 
     click(hwnd, *buy_coord)
     time.sleep(pause)
@@ -374,17 +313,31 @@ def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, pause=0.5):
 
     click(hwnd, *buy_coord)
     time.sleep(pause)
-    addresses = [addr for addr in addresses if read(h_process, addr) == 257]
+    addresses = [addr for addr in addresses if read(h_process, addr) == 0]
 
+    click(hwnd, *buy_coord)
+    time.sleep(pause)
+    addresses = [addr for addr in addresses if read(h_process, addr) == 1]
 
-    addresses_ending_with_8 = []
+    click(hwnd, *buy_coord)
+    time.sleep(pause)
+    addresses = [addr for addr in addresses if read(h_process, addr) == 0]
+
+    click(hwnd, *buy_coord)
+    time.sleep(pause)
+    addresses = [addr for addr in addresses if read(h_process, addr) == 1]
+
+    click(hwnd, *buy_coord)
+    time.sleep(pause)
+    addresses = [addr for addr in addresses if read(h_process, addr) == 0]
+
+    address_tuples = []
     for addr in addresses:
         hex_str = f"{addr:X}"
-        if hex_str.endswith('8'):
-            addresses_ending_with_8.append((addr, hex_str))
+        address_tuples.append((addr, hex_str))
 
     normalized_addresses = []
-    for addr, hex_str in addresses_ending_with_8:
+    for addr, hex_str in address_tuples:
         if len(hex_str) < 11:
             normalized_hex = '0' * (11 - len(hex_str)) + hex_str
         else:
@@ -399,20 +352,22 @@ def bag_pd(h_process, hwnd, initial_addresses, buy_coord, up_coord, pause=0.5):
         groups[prefix].append((addr, hex_str))
 
     final_addresses = []
-    pair_count = 0
 
     for prefix, addrs in sorted(groups.items()):
-        if 2 <= len(addrs) <= 3:
-            pair_count += 1
+        if 5 <= len(addrs) <= 20:
             for i, (addr, hex_str) in enumerate(addrs):
                 val = read(h_process, addr)
                 final_addresses.append(addr)
 
+    if final_addresses:
+        ct_file = create_cheat_table(final_addresses, process_name)
 
     return final_addresses
 
 
 def auto_settings2(page):
+
+
     pid, process_name = auto_pid()
     hwnd = auto_hwnd(pid, process_name)
 
@@ -425,12 +380,14 @@ def auto_settings2(page):
     click(hwnd, *buy_coord)
     time.sleep(0.9)
 
-    addresses = scan_for_value2(h_process, 257)
+    addresses = scan_for_value2(h_process, 1)
     click(hwnd, *buy_coord)
     time.sleep(1)
-    filtered = bag_pd(h_process, hwnd, addresses, buy_coord, up_coord)
+    filtered = bag_pd(h_process, hwnd, addresses, buy_coord, up_coord, process_name)
 
     show_results_dialog(filtered, h_process, page)
+    kernel32.CloseHandle(h_process)
+    h_process = None
 
 
 def show_results_dialog(filtered_addresses, h_process, page):
@@ -573,7 +530,7 @@ def show_results_dialog(filtered_addresses, h_process, page):
     dialog_card = ft.Container(
         content=content_column,
         padding=30,
-        width=400,  # Немного шире для лучшего отображения
+        width=400,
         bgcolor=ft.LinearGradient(
             begin=ft.Alignment(-1, -1),
             end=ft.Alignment(1, 1),
@@ -616,8 +573,6 @@ def show_results_dialog(filtered_addresses, h_process, page):
     page.update()
 
 
-
-
 def read_dword(h_process, address):
     buf = ctypes.create_string_buffer(8)
     bytes_read = ctypes.c_size_t()
@@ -626,9 +581,10 @@ def read_dword(h_process, address):
         return None
     return struct.unpack("<Q", buf.raw)[0]
 
+
 def enum_memory_regions(h_process):
-    start_addr = 0x30000000
-    end_addr = 0x120000000
+    start_addr = 0x00000000
+    end_addr = 0x7FFFFFFFFFFF
     address = start_addr
     mbi = MEMORY_BASIC_INFORMATION()
     regions = []
@@ -636,56 +592,51 @@ def enum_memory_regions(h_process):
     while address < end_addr:
         res = VirtualQueryEx(h_process, ctypes.c_void_p(address),
                              ctypes.byref(mbi), ctypes.sizeof(mbi))
-        if not res:
-            address += 0x1000
-            continue
+        if res == 0:
+            break
 
         base = mbi.BaseAddress
         region_size = mbi.RegionSize
 
-        if base + region_size < start_addr or base >= end_addr:
-            address = base + region_size
-            continue
+        if mbi.State == MEM_COMMIT:
+            prot = mbi.Protect
+            readable = (prot & PAGE_READONLY) or (prot & PAGE_READWRITE) or (prot & PAGE_WRITECOPY) or \
+                       (prot & PAGE_EXECUTE_READ) or (prot & PAGE_EXECUTE_READWRITE) or (prot & PAGE_EXECUTE_WRITECOPY)
 
-        if base + region_size > end_addr:
-            region_size = end_addr - base
+            if readable and region_size > 0:
+                regions.append((base, region_size))
 
-        if mbi.State != MEM_COMMIT:
-            address = base + mbi.RegionSize
-            continue
+        address = base + region_size
 
-        if not (mbi.Protect & PAGE_READWRITE):
-            address = base + mbi.RegionSize
-            continue
-
-        if mbi.Type != 0x20000:
-            address = base + mbi.RegionSize
-            continue
-
-        if region_size > 8:
-            regions.append((base, region_size))
-
-        address = base + mbi.RegionSize
+        if address <= base:
+            break
 
     return regions
+
 
 def scan_for_value(h_process, target_value):
     found = []
     regions = enum_memory_regions(h_process)
     pattern = struct.pack("<Q", target_value)
-    chunk_size = 0x2000000
+    CHUNK = 64 * 1024 * 1024
 
     for base, size in regions:
         offset = 0
-        while offset < size - 8:
-            to_read = min(chunk_size, size - offset)
+        while offset < size:
+            to_read = min(CHUNK, size - offset)
             buf = ctypes.create_string_buffer(to_read)
             bytes_read = ctypes.c_size_t()
 
-            ok = ReadProcessMemory(h_process, ctypes.c_void_p(base + offset), buf, to_read, ctypes.byref(bytes_read))
+            ok = ReadProcessMemory(
+                h_process,
+                ctypes.c_void_p(base + offset),
+                buf,
+                to_read,
+                ctypes.byref(bytes_read)
+            )
+
             if not ok or bytes_read.value == 0:
-                offset += to_read
-                continue
+                break
 
             raw = buf.raw[:bytes_read.value]
             start = 0
@@ -693,21 +644,23 @@ def scan_for_value(h_process, target_value):
                 idx = raw.find(pattern, start)
                 if idx == -1:
                     break
+
                 addr = base + offset + idx
                 if (addr & 0xF) == 0:
                     found.append(addr)
+
                 start = idx + 1
 
-            offset += to_read
+            offset += bytes_read.value
 
     return found
 
-def barrier(h_process, hwnd, up_coord, sk_coord, cancel_coord,up_nakl, initial_addresses,
-                               target_count=10, max_iterations=30, pause=0.5):
+
+def barrier(h_process, hwnd, up_coord, sk_coord, cancel_coord, up_nakl, initial_addresses, target_count=10,
+            max_iterations=50, pause=0.5):
     addresses = list(initial_addresses)
     expected = 0
     iteration = 0
-
 
     while len(addresses) > target_count and iteration < max_iterations and addresses:
         iteration += 1
@@ -722,7 +675,6 @@ def barrier(h_process, hwnd, up_coord, sk_coord, cancel_coord,up_nakl, initial_a
 
         addresses = new_addresses
         expected = 1 if expected == 0 else 0
-
 
     ones = sum(1 for a in addresses if read_dword(h_process, a) == 1)
     zeros = len(addresses) - ones
@@ -757,13 +709,13 @@ def barrier(h_process, hwnd, up_coord, sk_coord, cancel_coord,up_nakl, initial_a
 
     start_vals = {a: read_dword(h_process, a) for a in final}
     click(hwnd, *up_nakl)
-    time.sleep(0.2)
+    time.sleep(0.5)
+    final = [a for a in final if read_dword(h_process, a) == start_vals[a]]
     click(hwnd, *up_nakl)
     time.sleep(0.5)
     final = [a for a in final if read_dword(h_process, a) == start_vals[a]]
 
     final = [a for a in final if (a & 0xF) == 0]
-
 
     return final
 
@@ -774,8 +726,11 @@ def auto_settings(e, page):
     CARD_COLOR = ft.Colors.GREY_900
     TEXT_COLOR = ft.Colors.WHITE
 
+
     pid, process_name = auto_pid()
     hwnd = auto_hwnd(pid, process_name)
+    h_process = OpenProcess(0x1F0FFF, False, pid)
+
     snackbar = ft.SnackBar(
         content=ft.Row([
             ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=ft.Colors.WHITE, size=20),
@@ -787,8 +742,6 @@ def auto_settings(e, page):
     page.overlay.append(snackbar)
     snackbar.open = True
     page.update()
-
-    h_process = OpenProcess(0x1F0FFF, False, pid)
 
     rect = window_rect(hwnd)
     up = cords(rect, upd[0], upd[1], size)
@@ -834,8 +787,6 @@ def auto_settings(e, page):
         threading.Thread(target=delayed_click, daemon=True).start()
         threading.Thread(target=run_auto_settings2, daemon=True).start()
 
-
-
     def address_tile(addr_hex):
         return ft.Container(
             content=ft.Row(
@@ -863,7 +814,7 @@ def auto_settings(e, page):
 
     if filtered:
         address_content = []
-        for i, addr in enumerate(filtered[:3]):
+        for i, addr in enumerate(filtered[:5]):
             hex_str = f"{addr:08X}"
             address_content.append(address_tile(hex_str))
             address_content.append(ft.Container(height=6))
@@ -969,21 +920,18 @@ def auto_settings(e, page):
     dialog.open = True
     page.update()
 
-def read_mem(h_proc, address):
-    global running, value
-    address_ptr = ctypes.c_void_p(address)
-    buffer = ctypes.create_string_buffer(1)
+
+def update(hwnd, update_time):
+    global upd_running, running
+
+    rect = window_rect(hwnd)
+    u = cords(rect, upd[0], upd[1], size)
+
     while running:
-        ntdll.NtReadVirtualMemory(h_proc, address_ptr, buffer, 1, None)
-        value = buffer[0]
-
-    time.sleep(0.0001)
-
-
-def update(hwnd, u, update_time):
-    while running:
-        click(hwnd, u[0], u[1])
+        if upd_running:
+            click(hwnd, *u)
         time.sleep(update_time)
+
 
 
 def send_telegram(image_path, caption=""):
@@ -999,27 +947,36 @@ def send_telegram(image_path, caption=""):
             print("Ошибка отправки в Telegram:", e)
 
 
-def main_l(hwnd, buy_l, conf_l, u, stickers):
-    global running, value
+
+
+def main_l(hwnd, stickers, h_process, address):
+    global running, value, upd_running
+
+    address_ptr = ctypes.c_void_p(address)
+    buffer = ctypes.create_string_buffer(1)
+
+    rect = window_rect(hwnd)
+    buy_b = cords(rect, buy[0], buy[1], size)
+    conf = cords(rect, confirm[0], confirm[1], size)
+    u = cords(rect, upd[0], upd[1], size)
+
     while running:
-        if value >= stickers:
-            win32api.PostMessage(hwnd, 513, 0, buy_l)
-            win32api.PostMessage(hwnd,514, 0, buy_l)
-            win32api.PostMessage(hwnd, 513, 0, conf_l)
-            win32api.PostMessage(hwnd, 514, 0, conf_l)
-            threading.Thread(target=notify, args=value, daemon=True).start()
-            click(hwnd, u[0], u[1])
-            click(hwnd, u[0], u[1])
-    time.sleep(0.0001)
+        dll_read(h_process, address_ptr, buffer, 1)
+        value = ord(buffer[0])
+        if value > stickers:
+            click(hwnd, *buy_b)
+            click(hwnd, *conf)
+            click(hwnd, *u)
+            notify(value)
+            time.sleep(1)
 
 
-def notify(stickers_count):
-    global window
 
-    hwnd = win32gui.FindWindow(None, window)
-    if hwnd == 0:
-        return
-    hwnd = win32gui.FindWindowEx(hwnd, None, None, None)
+
+
+def notify(sticker_val):
+    pid, process_name = auto_pid()
+    hwnd = auto_hwnd(pid, process_name)
 
     rect = window_rect(hwnd)
     with mss.mss() as sct:
@@ -1034,57 +991,45 @@ def notify(stickers_count):
         mss.tools.to_png(screenshot.rgb, screenshot.size, output=path)
 
     send_telegram(path,
-                  caption=f"𝘼𝙪𝙧𝙤𝙣 𝘾𝙡𝙞𝙚𝙣𝙩 | 𝙃𝙖𝙡𝙛-𝘼𝙥𝙞\n<b>🟢 Скин успешно куплен\nКол-во наклеек: {sticker_count}\nПродолжаю работу....</b>")
+                  caption=f"𝘼𝙪𝙧𝙤𝙣 𝘾𝙡𝙞𝙚𝙣𝙩 | 𝙃𝙖𝙡𝙛-𝘼𝙥𝙞\n<b>🟢 Скин успешно куплен\nКол-во наклеек: {sticker_val}\nПродолжаю работу....</b>")
     try:
         os.remove(path)
     except:
         pass
 
 
-def start(delay, stickers, update_time):
-    global running, h_proc, address
+def start(delay, stickers, update_time, address):
+    global running, upd_running, h_process
 
     pid, process_name = auto_pid()
     hwnd = auto_hwnd(pid, process_name)
 
-    if h_proc is None:
-        h_proc = kernel32.OpenProcess(0x1F0FFF, False, pid)
-
-    rect = window_rect(hwnd)
-
-    buy_button = cords(rect, buy[0], buy[1], size)
-    conf = cords(rect, confirm[0], confirm[1], size)
-    u = cords(rect, upd[0], upd[1], size)
-    buy_l = win32api.MAKELONG(buy_button[0], buy_button[1])
-    conf_l = win32api.MAKELONG(conf[0], conf[1])
+    h_process = kernel32.OpenProcess(0x1F0FFF, False, pid)
 
     if not running:
         running = True
-        read = threading.Thread(target=read_mem, args=(h_proc, address))
-        main = threading.Thread(target=main_l_optimized, args=(hwnd, buy_l, conf_l, u, stickers), daemon=True)
-        update_ = threading.Thread(target=update, args=(hwnd, u, update_time), daemon=True)
+        upd_running = True
+        threading.Thread(target=main_l, args=(hwnd, stickers, h_process, address), daemon=False).start()
+        threading.Thread(target=update, args=(hwnd, update_time), daemon=False).start()
 
-        read.start()
-        main.start()
-        update_.start()
+        current_process = psutil.Process(pid)
 
-        current_process = psutil.Process()
         current_process.nice(psutil.HIGH_PRIORITY_CLASS)
 
+
 def stop():
-    global running, h_proc
-
+    global running, upd_running, h_process
     running = False
-    time.sleep(0.1)
+    upd_running = False
 
-    if h_proc:
-        kernel32.CloseHandle(h_proc)
+    time.sleep(0.5)
 
-    h_proc = None
+    kernel32.CloseHandle(h_process)
+
 
 # GUI
 def login_page(page: ft.Page):
-    icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+    icon_path = resource_path("icon.ico")
     page.window.icon = icon_path
     page.title = "𝘼𝙪𝙧𝙤𝙣 𝘾𝙡𝙞𝙚𝙣𝙩 | 𝙃𝙖𝙡𝙛-𝘼𝙥𝙞"
     page.theme_mode = ft.ThemeMode.DARK
@@ -1102,25 +1047,50 @@ def login_page(page: ft.Page):
 
     def check_subscription(hwid):
         try:
-            resp = requests.get(pastebin_link, timeout=3)
-            resp.raise_for_status()
-            data = json.loads(resp.text)
+            response = requests.get(db_link, timeout=5)
+            response.raise_for_status()
+            data = response.json()
 
-            if "dev" in data and hwid in data["dev"]:
-                return {"valid": True}
-            elif "users" in data and hwid in data["users"]:
-                expiry_str = data["users"][hwid]
-                expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d")
+            if "forever" in data:
+                if hwid in data["forever"]:
+                    return {"valid": True, "type": "forever"}
 
-                if datetime.datetime.now() < expiry_date:
-                    return {"valid": True}
-                else:
-                    return {"valid": False, "error": "subscription_expired"}
+            if "users" in data:
+                users_data = data["users"]
+                if isinstance(users_data, dict):
+                    if hwid in users_data:
+                        expiry_str = users_data[hwid]
+                        try:
+                            expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d")
+                            if datetime.now() < expiry_date:
+                                return {"valid": True, "type": "temporary", "expires": expiry_str}
+                            else:
+                                return {"valid": False, "error": "subscription_expired"}
+                        except ValueError:
+                            return {"valid": False, "error": "date_format_error"}
+                elif isinstance(users_data, list):
+                    for entry in users_data:
+                        try:
+                            user_hwid, expiry_str = entry.split(":")
+                            if user_hwid == hwid:
+                                expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d")
+                                if datetime.now() < expiry_date:
+                                    return {"valid": True, "type": "temporary", "expires": expiry_str}
+                                else:
+                                    return {"valid": False, "error": "subscription_expired"}
+                        except:
+                            continue
 
             return {"valid": False, "error": "hwid_not_found"}
-
-        except Exception as e:
+        except requests.RequestException as e:
+            print(f"Ошибка подключения к Pastebin: {e}")
             return {"valid": False, "error": "connection_error"}
+        except json.JSONDecodeError as e:
+            print(f"Ошибка парсинга JSON: {e}")
+            return {"valid": False, "error": "json_error"}
+        except Exception as e:
+            print(f"Общая ошибка: {e}")
+            return {"valid": False, "error": "unknown_error"}
 
     def get_hwid() -> str:
         data = {
@@ -1165,13 +1135,28 @@ def login_page(page: ft.Page):
     def sign_in(e) -> bool:
         hwid = get_hwid()
         sub_info = check_subscription(hwid)
+
         if sub_info["valid"]:
+            success_snackbar = ft.SnackBar(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.WHITE, size=20),
+                    ft.Text(f"Успешный вход!", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+                bgcolor=ft.Colors.GREEN_600,
+                duration=2000
+            )
+            page.overlay.append(success_snackbar)
+            success_snackbar.open = True
+            page.update()
+
             main_page(page)
+            return True
         else:
             error_messages = {
                 "hwid_not_found": "HWID не найден в базе данных",
                 "subscription_expired": "Подписка истекла",
-                "connection_error": "Ошибка подключения к серверу"
+                "connection_error": "Ошибка подключения к базе данных",
+                "database_error": "Ошибка базы данных"
             }
             error_msg = error_messages.get(sub_info.get("error"), "Ошибка авторизации")
 
@@ -1186,7 +1171,7 @@ def login_page(page: ft.Page):
             page.overlay.append(snackbar)
             snackbar.open = True
             page.update()
-
+            return False
 
     login = ft.Container(
         content=ft.Column(
@@ -1307,8 +1292,9 @@ def login_page(page: ft.Page):
 
     page.add(login)
 
+
 def main_page(page: ft.Page):
-    global running
+    global running, chat_id
     page.clean()
     icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
     page.window.icon = icon_path
@@ -1324,7 +1310,6 @@ def main_page(page: ft.Page):
     CARD_COLOR = ft.Colors.GREY_800
     TEXT_COLOR = ft.Colors.WHITE
     page.bgcolor = BACKGROUND_COLOR
-
 
     start_stop = ft.Container(
         content=ft.Row([
@@ -1356,11 +1341,12 @@ def main_page(page: ft.Page):
         global running
 
         delay = float(delay_txt.value)
-        stickers = int(stickers_txt.value)
+        stickers = int(stickers_txt.value) - 1
         update_time = float(update.value)
+        address = int(sticker_address.value, 16)
 
         if not running:
-            start(delay, stickers, update_time)
+            start(delay, stickers, update_time, address)
             start_stop.gradient = ft.LinearGradient(
                 begin=ft.alignment.top_left,
                 end=ft.alignment.bottom_right,
@@ -1393,24 +1379,10 @@ def main_page(page: ft.Page):
             overlay_color=ft.Colors.GREY_700,
             side=ft.BorderSide(color=ft.Colors.GREY_600, width=1),
         ),
-        on_click= lambda e: auto_settings(e, page)
+        on_click=lambda e: auto_settings(e, page)
     )
 
-    config_button = ft.ElevatedButton(
-        "𝙇𝙤𝙖𝙙 𝘾𝙤𝙣𝙛𝙞𝙜",
-        width=160,
-        height=50,
-        style=ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=10),
-            color=ft.Colors.WHITE,
-            bgcolor=ft.Colors.TRANSPARENT,
-            overlay_color=ft.Colors.GREY_700,
-            side=ft.BorderSide(color=ft.Colors.GREY_600, width=1),
-        ),
-        on_click= lambda e: load_cfg(e, page)
-    )
-
-    def create_text_field(label, icon):
+    def create_text_field(label, icon, value=""):
         return ft.TextField(
             label=label,
             prefix_icon=icon,
@@ -1424,17 +1396,101 @@ def main_page(page: ft.Page):
             text_style=ft.TextStyle(color=TEXT_COLOR),
             filled=True,
             fill_color=CARD_COLOR,
+            value=value,
         )
 
-    delay_txt = create_text_field("ᴅᴇʟᴀʏ", ft.Icons.TIMER)
+    tg_path = resource_path("./telegram_settings.txt")
+
+    if os.path.exists(tg_path):
+        with open(tg_path, "r", encoding="utf-8") as f:
+            chat_id = f.read().strip()
+    else:
+        chat_id = ""
+
+    delay_txt = create_text_field("ᴅᴇʟᴀʏ", ft.Icons.TIMER, 0)
     stickers_txt = create_text_field("sᴛɪᴄᴋᴇʀs", ft.Icons.EMOJI_EMOTIONS)
-    update = create_text_field("ᴜᴘᴅᴀᴛᴇ ᴛɪᴍᴇ", ft.Icons.UPDATE)
+    update = create_text_field("ᴜᴘᴅᴀᴛᴇ ᴛɪᴍᴇ", ft.Icons.UPDATE, 1)
+    sticker_address = create_text_field("Address", ft.Icons.EMOJI_EMOTIONS, "0x")
+
+    chat_id_field = create_text_field("ᴄʜᴀᴛ ɪᴅ", ft.Icons.CHAT, chat_id or "")
+
+    def save_telegram_settings(e):
+        global chat_id
+        chat_id = chat_id_field.value
+        try:
+            with open("telegram_settings.txt", "w", encoding="utf-8") as f:
+                f.write(f"{chat_id}\n")
+        except Exception as ex:
+            snackbar = ft.SnackBar(
+                content=ft.Text(f"Ошибка: {ex}", color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.RED_600,
+                duration=2000
+            )
+            page.overlay.append(snackbar)
+            snackbar.open = True
+            page.update()
+            return
+
+        snackbar = ft.SnackBar(
+            content=ft.Row([
+                ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=ft.Colors.WHITE, size=20),
+                ft.Text("Настройки Telegram сохранены!", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+            bgcolor=ft.Colors.GREEN_600,
+            duration=2000
+        )
+        page.overlay.append(snackbar)
+        snackbar.open = True
+        page.update()
+
+    save_telegram_button = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.SAVE, color=ft.Colors.WHITE, size=20),
+            ft.Text("𝙎𝙖𝙫𝙚", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=8),
+        width=160,
+        height=50,
+        border_radius=12,
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_left,
+            end=ft.alignment.bottom_right,
+            colors=[PRIMARY_COLOR, SECONDARY_COLOR]
+        ),
+        shadow=ft.BoxShadow(
+            spread_radius=1,
+            blur_radius=15,
+            color=PRIMARY_COLOR,
+            offset=ft.Offset(0, 0),
+            blur_style=ft.ShadowBlurStyle.OUTER
+        ),
+        on_click=save_telegram_settings,
+        animate=300
+    )
+
+    telegram_settings_row = ft.Row(
+        controls=[
+            ft.Column(
+                controls=[
+                    chat_id_field,
+                ],
+                spacing=20,
+                expand=True
+            ),
+            ft.Container(
+                content=save_telegram_button,
+                alignment=ft.alignment.center_right,
+                padding=ft.padding.only(top=20)
+            )
+        ],
+        spacing=20,
+        vertical_alignment=ft.CrossAxisAlignment.START
+    )
 
     left_column = ft.Container(
         content=ft.Column(
             controls=[
                 start_stop,
-                config_button,
+                sticker_address,
                 settings_button,
             ],
             spacing=15,
@@ -1451,6 +1507,11 @@ def main_page(page: ft.Page):
             ],
             spacing=20,
         ),
+        padding=10
+    )
+
+    telegram_column = ft.Container(
+        content=telegram_settings_row,
         padding=10
     )
 
@@ -1559,6 +1620,38 @@ def main_page(page: ft.Page):
         expand=True,
     )
 
+    telegram_tab = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            spacing=10,
+                        ),
+                        ft.Divider(height=20, thickness=1, color=ft.Colors.GREY_700),
+                        telegram_column,
+                        ft.Container(
+                        ),
+                    ]),
+                    bgcolor=CARD_COLOR,
+                    border_radius=15,
+                    padding=20,
+                    shadow=ft.BoxShadow(
+                        spread_radius=1,
+                        blur_radius=10,
+                        color=ft.Colors.BLACK,
+                        offset=ft.Offset(0, 2),
+                    )
+                )
+            ],
+            spacing=20,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        padding=10,
+        expand=True,
+    )
+
     tabs = ft.Tabs(
         animation_duration=400,
         indicator_color=PRIMARY_COLOR,
@@ -1575,6 +1668,10 @@ def main_page(page: ft.Page):
                 icon=ft.Icons.SETTINGS,
                 content=settings
             ),
+            ft.Tab(
+                icon=ft.Icons.TELEGRAM,
+                content=telegram_tab
+            ),
         ],
         expand=True
     )
@@ -1584,5 +1681,6 @@ def main_page(page: ft.Page):
     update_sell_fields()
     page.update()
 
+
 if __name__ == "__main__":
-    ft.app(login_page)
+    ft.app(target=login_page, view=ft.AppView.FLET_APP)
